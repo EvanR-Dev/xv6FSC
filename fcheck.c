@@ -13,7 +13,7 @@
 //#include "fs.h"
 
 // prototypes
-void errorDetected(bool);
+void errorHandler(bool[]);
 
 #define BLOCK_SIZE (BSIZE)
 
@@ -84,44 +84,76 @@ main(int argc, char *argv[])
   dip = (struct dinode *) (addr + IBLOCK((uint)0)*BLOCK_SIZE); 
   //printf("begin addr %p, begin inode %p , offset %d \n", addr, dip, (char *)dip -addr);
 
+  // get the address of root dir 
+  de = (struct dirent *) (addr + (dip[ROOTINO].addrs[0])*BLOCK_SIZE);
+
   ////////////////////////////// traverse fs ////////////////////////////////////////
   // the current inode
   int i = 0;
   // bool arr where each idx, 1 to 12, represents an error if true
   bool chkFails[13] = { 0 };
 
-
   // chk1: each inode must be unallocated or 1 of the 3 types (0 to 3 inc)
-  bool isValidOrAllocated = dip[i].type >= 0 && dip[i].type <= 3;
+  bool isValidOrAllocated;
+
 
   while (i < sb->ninodes){
+    isValidOrAllocated = dip[i].type >= 0 && dip[i].type <= 3
     if (!isValidOrAllocated){   // 1
-      fprintf(stderr, "ERROR: bad inode.");
-      exit(1);
+      chkFails[1] = true;
+      errorHandler(chkFails, false);
+    }
+
+    if (dip[ROOTNO].type != 1){   // 3
+      chkFails[3] = true;
+      errorHandler(chkFails, false);
     }
 
     // allocated inode
-    if (dip[i].type > 0) {
-      
+    if (dip[i].type > 0){
+      // check dir blocks
+      int dirBlk = 0;
+      while (dirBlk < NDIRECT){
+        // allocated dir block
+        if (dip[i].addrs[dirBlk] != 0){
+          // dir block has invalid addr
+          if (dip[i].addrs[dirBlk] > sb->nblocks || dip[i].addrs[dirBlk] < 0){   // 2
+            chkFails[2] = true;
+            errorHandler(chkFails, true);
+          }
+        }
+
+        dirBlk++;
+      }
+
+      // indir block
+      if (dip[i].addrs[NDIRECT] != 0){
+        // indir block has invalid addr
+        if (dip[i].addrs[dirBlk] > sb->nblocks || dip[i].addrs[dirBlk] < 0){    // 2
+          chkFails[2] = true;
+          errorHandler(chkFails, false);
+        }
+
+        // the addresses within indir block must also be valid
+        int indirBlk = 0;
+        // rsect
+        while (indirBlk < NINDIRECT){
+          // 2
+        }
+      }
     }
     else {
 
     }
 
+
+
     i++;
-  }
-
-  // all error messages
-  if (chk1Fail) {
-
   }
 
   // // read root inode
   // // sz of inode, links to inode, and type of inode
   // printf("Root inode  size %d links %d type %d \n", dip[ROOTINO].size, dip[ROOTINO].nlink, dip[ROOTINO].type);
-
-  // // get the address of root dir 
-  // de = (struct dirent *) (addr + (dip[ROOTINO].addrs[0])*BLOCK_SIZE);
 
   // // print the entries in the first block of root dir 
   // n = dip[ROOTINO].size/sizeof(struct dirent);
@@ -134,6 +166,25 @@ main(int argc, char *argv[])
 }
 
 // all errors: go to when error occurred during traversal
-void errorDetected(bool b) {
-  if ()
+void
+errorHandler(bool b[], bool isDir){
+  // idx of arr represents errors 1 thru 12 inc.
+  // if true, then print to stderr and exit
+  if (b[1]) fprintf(stderr, "ERROR: bad inode.");
+  else if (b[2]) {
+    if (isDir) fprintf(stderr, "ERROR: bad direct address in inode.");
+    else fprintf(stderr, "ERROR: bad indirect address in inode.");
+  }
+  else if (b[3]) fprintf(stderr, "ERROR: root directory does not exist.");
+  else if (b[4]) fprintf(stderr, "ERROR: directory not properly formatted.");
+  else if (b[5]) fprintf(stderr, "ERROR: address used by inode but market free in bitmap.");
+  else if (b[6]) fprintf(stderr, "ERROR: bitmap marks block in use but it is not in use.");
+  else if (b[7]) fprintf(stderr, "ERROR: direct address used more than once.");
+  else if (b[8]) fprintf(stderr, "ERROR: indirect address used more than once.");
+  else if (b[9]) fprintf(stderr, "ERROR: inode marked use but not found in a directory.");
+  else if (b[10]) fprintf(stderr, "ERROR: inode referred to in directory but marked free.");
+  else if (b[11]) fprintf(stderr, "ERROR: bad reference count for file.");
+  else if (b[12]) fprintf(stderr, "ERROR: directory appears more than once in file system.");
+
+  exit(1);    // exit with error
 }
