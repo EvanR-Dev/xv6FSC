@@ -12,8 +12,6 @@
 //#include "types.h"
 //#include "fs.h"
 
-// testing hello
-
 // prototypes
 void errorHandler(bool[], bool);
 
@@ -134,7 +132,41 @@ main(int argc, char *argv[])
     }
 
     // allocated inode
-    if (dip[i].type > 0){
+    if (dip[i].type != 0){
+      // inode is a dir: T_DIR
+      if (dip[i].type == T_DIR){
+        int dirBlk = 0;
+        bool oneDot = false, twoDots = false;
+
+        // direct block entries
+        while (dirBlk < NDIRECT){
+          struct dirent* de = (struct dirent *) (addr + (dip[i].addrs[dirBlk])*BLOCK_SIZE);
+          int sz = dip[i].size/sizeof(struct dirent);
+          int k = 0;
+          while (k < sz){
+            // located .. or . entry
+            if (strcmp(de->name, ".") == 0) oneDot = true;
+            if (strcmp(de->name, "..") == 0){
+              twoDots = true;
+
+              // verify . has correct definition
+              if(i != de->inum){  // 4
+                chkFails[4] = true;
+                errorHandler(chkFails, false);
+              }
+            }
+            k++; de++;
+          }
+          dirBlk++;
+        }
+
+        // may have to chk indirect block here later
+        // uint
+      }
+
+
+
+
       // check dir blocks
       int dirBlk = 0;
       while (dirBlk < NDIRECT){
@@ -145,6 +177,14 @@ main(int argc, char *argv[])
             chkFails[2] = true;
             errorHandler(chkFails, true);
           }
+
+          // check bitmap has 1 where block is
+          char* bitMap = (char*) (addr + BBLOCK(0, sb->ninodes)*BLOCK_SIZE);
+          int x = 1 << (dip[i].addrs[dirBlk] % 8);
+          if ((bitMap[dip[i].addrs[dirBlk] / 8] & m) == 0){   // 5
+            chkFails[5] = true;
+            errorHandler(chkFails, false);
+          }
         }
 
         dirBlk++;
@@ -153,7 +193,7 @@ main(int argc, char *argv[])
       // indir block
       if (dip[i].addrs[NDIRECT] != 0){
         // indir block has invalid addr
-        if (dip[i].addrs[dirBlk] > sb->nblocks || dip[i].addrs[dirBlk] < 0){    // 2
+        if (dip[i].addrs[NDIRECT] > sb->nblocks || dip[i].addrs[NDIRECT] < 0){    // 2
           chkFails[2] = true;
           errorHandler(chkFails, false);
         }
@@ -191,7 +231,8 @@ main(int argc, char *argv[])
 
 // all errors: go to when error occurred during traversal
 void
-errorHandler(bool b[], bool isDir){
+errorHandler(bool b[], bool isDir)
+{
   // idx of arr represents errors 1 thru 12 inc.
   // if true, then print to stderr and exit
   if (b[1]) fprintf(stderr, "ERROR: bad inode.");
