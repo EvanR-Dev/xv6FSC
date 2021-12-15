@@ -11,9 +11,11 @@
 
 //#include "types.h"
 //#include "fs.h"
+
 // testing hello
+
 // prototypes
-void errorHandler(bool[]);
+void errorHandler(bool[], bool);
 
 #define BLOCK_SIZE (BSIZE)
 
@@ -96,16 +98,38 @@ main(int argc, char *argv[])
   // chk1: each inode must be unallocated or 1 of the 3 types (0 to 3 inc)
   bool isValidOrAllocated;
 
+  // inode 1 must be a dir
+  if (dip[ROOTNO].type != 1){   // 3
+    chkFails[3] = true;
+    errorHandler(chkFails, false);
+  }
 
+  // traverse all entries within the init direct block as indicated by de
+  int j = 0;
+  while (j < BSIZE/sizeof(struct dirent)){
+    // verify parent dir -> ROOTINO
+    if (strcmp(de->name, "..") == 0){
+      if(de->inum == ROOTINO) {
+        return;
+      } else {
+        chkFails[3] = true;
+        errorHandler(chkFails, false);
+      }
+    }
+    j++; de++;
+  }
+
+  // at this point the parent DNE
+  chkFails[3] = true;
+  errorHandler(chkFails, false);
+
+
+
+  // iterate thru every inode
   while (i < sb->ninodes){
     isValidOrAllocated = dip[i].type >= 0 && dip[i].type <= 3
     if (!isValidOrAllocated){   // 1
       chkFails[1] = true;
-      errorHandler(chkFails, false);
-    }
-
-    if (dip[ROOTNO].type != 1){   // 3
-      chkFails[3] = true;
       errorHandler(chkFails, false);
     }
 
