@@ -36,12 +36,13 @@
 
 // prototypes
 // helpers
-void errorHandler(bool[], bool);
+void errorHandler(bool);
 void rsect(uint, void);
 uint xint(uint);
 
 // checks
 void fsChkFlag(bool, int, bool);
+void fsChkHelper3(int, int, struct dirent*);
 //void fsChk1(int, struct dinode*);
 // add more with param
 // ...
@@ -102,23 +103,71 @@ int main(int argc, char *argv[])
     de = (struct dirent *)(addr + (dip[ROOTINO].addrs[0]) * BLOCK_SIZE);
 
     /////////////////////////////////////////////// 3 /////////////////////////////////////////////
+    // init rt check
     // inode 1 must be a dir
     bool isDir = dip[ROOTNO].type != 1
     fsChkFlag(isDir, 3, false);
+
+    // traverse all entries within the init direct block as indicated by de
+    int i = 0, firstDirSz = BSIZE / sizeof(struct dirent);
+    fsChkHelper3(i, firstDirSz, de);
     //////////////////////////////////////////// end 3 ////////////////////////////////////////////
 
-    ////////////////////////////////////////// main iteration /////////////////////////////////////////////
-
+    /////////////////////////////////////////////// 4 /////////////////////////////////////////////
     // the current inode
-    int i = 0;
-    // iterate thru every inode
+    // this is a special case that deals with directories,
+    // so we will handle it separately first
+    while (i < sb->ninodes){
+        // inode is a dir: T_DIR
+        if (dip[i].type == T_DIR)
+        {
+            bool oneDot = false, twoDots = false;
+            int dirBlk = 0;
+
+            // direct block entries
+            while (dirBlk < NDIRECT)
+            {
+                struct dirent *de = (struct dirent *)(addr + (dip[i].addrs[dirBlk]) * BLOCK_SIZE);
+                int sz = dip[i].size / sizeof(struct dirent);
+                int j = 0;
+                while (j < sz)
+                {
+                    // located . or .. entry
+                    if (strcmp(de->name, ".") == 0)
+                    {
+                        oneDot = true;
+                        // verify . has correct definition
+                        bool isNotItself = i != de->inum;
+                        fsChkFlag(isNotItself, 4, false);
+                    }
+                    if (strcmp(de->name, "..") == 0)
+                    {
+                        twoDots = true;
+                    }
+                    j++;
+                    de++;
+                }
+            }
+
+            // POSSIBLY CHECK INDIR BLOCK HERE....LATER
+        }
+        i++;
+    }
+    //////////////////////////////////////////// end 4 ////////////////////////////////////////////
+
+
+
+    ////////////////////////////////////////// main iteration /////////////////////////////////////////////
+    // iterate thru every inode using i as each
+    // checks in here: 1 2 4
+    i = 0;
     while (i < sb->ninodes)
     {
         /////////////////////////////////////////////// 1 /////////////////////////////////////////////
         // check 1 at each inode
         int type = dip[i].type;
-        bool isValidType = type == 0 || type == 1 || type == 2 || type == 3;
-        fschkFlag(!isValidType, 1, false);
+        bool isValidType = type == 0 || type == 1 || type == 2 || type == 3;    // may need to change logic
+        fsChkFlag(!isValidType, 1, false);
         //////////////////////////////////////////// end 1 ////////////////////////////////////////////
 
         // allocated inode (1 - 3)
@@ -135,17 +184,19 @@ int main(int argc, char *argv[])
                     /////////////////////////////////////////////// 2 /////////////////////////////////////////////
                     // check 2 @ dir blk: dir block has invalid addr
                     bool isInvalidDirAddr = dip[i].addrs[dirBlk] > sb->nblocks || dip[i].addrs[dirBlk] < 0;
-                    fschkFlag(isInvalidDirAddr, 2, true);
+                    fsChkFlag(isInvalidDirAddr, 2, true);
                     //////////////////////////////////////////// end 2 ////////////////////////////////////////////
 
+                    /////////////////////////////////////////////// 5 /////////////////////////////////////////////
+                    // check 5: block addr <--> bitmap
                     // check bitmap has 1 where block is
-                    char *bitMap = (char *)(addr + BBLOCK(0, sb->ninodes) * BLOCK_SIZE);
-                    int x = 1 << (dip[i].addrs[dirBlk] % 8);
-                    if ((bitMap[dip[i].addrs[dirBlk] / 8] & m) == 0)
-                    { // 5
-                        chkFails[5] = true;
-                        errorHandler(chkFails, false);
-                    }
+                    char *bitMap = (char*)(addr + BBLOCK(0, sb->ninodes) * BLOCK_SIZE);
+                    // perform addr calculation using offset and sizes
+                    int y = dip[i].addrs[dirBlk] % 8;
+                    int x = 1 << y;
+                    bool isNotMarked1 = (bitMap[dip[i].addrs[dirBlk] / 8] & x) == 0;
+                    fsChkFlag(isNotMarked1, 5, false);
+                    //////////////////////////////////////////// end 5 ////////////////////////////////////////////
 
                     // verify that every dir block has bn
                     int bnum = dip[i].addrs[dirBlk];
@@ -195,13 +246,15 @@ int main(int argc, char *argv[])
                 }
                 //////////////////////////////////////////// end 2 ////////////////////////////////////////////
 
+
+                /////////////////////////////////////////////// 5 /////////////////////////////////////////////
+                // same as before with indirect: indir  block <--> addr
                 char *bitMap = (char *)(addr + BBLOCK(0, sb->ninodes) * BLOCK_SIZE);
-                int x = 1 << (dip[i].addrs[NDIRECT] % 8);
-                if ((bitMap[dip[i].addrs[NDIRECT] / 8] & m) == 0)
-                { // 5
-                    chkFails[5] = true;
-                    errorHandler(chkFails, false);
-                }
+                int y = dip[i].addrs[NDIRECT] % 8;
+                int x = 1 << y;
+                bool isNotMarked1 = (bitMap[dip[i].addrs[NDIRECT] / 8] & x) == 0;
+                fsChkFlag(isNotMarked1, 5, false);
+                //////////////////////////////////////////// end 5 ////////////////////////////////////////////
 
                 // still 5
                 // check inside indirect block
@@ -338,29 +391,6 @@ int main(int argc, char *argv[])
                 // direct block entries
                 while (dirBlk < NDIRECT)
                 {
-                    struct dirent *de = (struct dirent *)(addr + (dip[i].addrs[dirBlk]) * BLOCK_SIZE);
-                    int sz = dip[i].size / sizeof(struct dirent);
-                    int k = 0;
-                    while (k < sz)
-                    {
-                        // located .. or . entry
-                        if (strcmp(de->name, ".") == 0)
-                            oneDot = true;
-                        if (strcmp(de->name, "..") == 0)
-                        {
-                            twoDots = true;
-
-                            // verify . has correct definition
-                            if (i != de->inum)
-                            { // 4
-                                chkFails[4] = true;
-                                errorHandler(chkFails, false);
-                            }
-                        }
-                        k++;
-                        de++;
-                    }
-
                     // 10
                     int index = 0;
                     sz = BLOCK_SIZE / sizeof(struct dirent);
@@ -378,6 +408,8 @@ int main(int argc, char *argv[])
                 }
                 // may have to chk indirect block here later
                 // uint
+
+
                 // still 10
                 uint indirectIn[NINDIRECT];
                 rsect(xint(dip[i].addrs[NDIRECT]), (char *)indirectIn);
@@ -533,31 +565,6 @@ int main(int argc, char *argv[])
         i++;
     }
 
-    // traverse all entries within the init direct block as indicated by de
-    int j = 0;
-    while (j < BSIZE / sizeof(struct dirent))
-    { // 3
-        // verify parent dir -> ROOTINO
-        if (strcmp(de->name, "..") == 0)
-        {
-            if (de->inum == ROOTINO)
-            {
-                return;
-            }
-            else
-            {
-                chkFails[3] = true;
-                errorHandler(chkFails, false);
-            }
-        }
-        j++;
-        de++;
-    }
-
-    // at this point the parent DNE
-    chkFails[3] = true;
-    errorHandler(chkFails, false);
-
     // 6
     // iterate through bitmap (data blocks)
     int b = BBLOCK((sb->size), sb->ninodes) + 1;
@@ -626,45 +633,65 @@ void fsChkFlag(bool b, int i, bool opt)
     {
         chkFails[i] = true;
         if (opt)
-            errorHandler(chkFails, true);
+            errorHandler(true);
         else
-            errorHandler(chkFails, false);
+            errorHandler(false);
     }
 }
 
+void fsChkHelper3(int i, int sz, struct dirent* de)
+{
+    while (i < sz)
+    {
+        // verify parent dir -> ROOTINO
+        if (strcmp(de->name, "..") == 0)
+        {
+            // look into this l8r
+            bool isInvalidRootPtr = de->inum != ROOTINO;
+            if (!isInvalidRootPtr)
+                return;      // MIGHT NEED TO CHANGE
+            fsChkFlag(isInvalidRootPtr, 3, false);
+        }
+        i++; de++;
+    }
+    // at this point the parent DNE
+    chkFails[3] = true;
+    errorHandler(false);
+}
+
 // all errors: go to when error occurred during traversal
-void errorHandler(bool b[] bool isDir)
+void errorHandler(bool isDir)
 {
     // idx of arr represents errors 1 thru 12 inc.
     // if true, then print to stderr and exit
-    if (b[1])
+    if (chkFails[1])
         fprintf(stderr, "ERROR: bad inode.\n");
-    else if (b[2])
+    else if (chkFails[2])
     {
         if (isDir)
             fprintf(stderr, "ERROR: bad direct address in inode.\n");
         else
             fprintf(stderr, "ERROR: bad indirect address in inode.\n");
     }
-    else if (b[3])
+    else if (chkFails[3])
         fprintf(stderr, "ERROR: root directory does not exist.\n");
-    else if (b[4])
+    else if (chkFails[4])
         fprintf(stderr, "ERROR: directory not properly formatted.\n");
-    else if (b[5])
+    else if (chkFails[5])
         fprintf(stderr, "ERROR: address used by inode but market free in bitmap.\n");
-    else if (b[6])
+    else if (chkFails[6])
         fprintf(stderr, "ERROR: bitmap marks block in use but it is not in use.\n");
-    else if (b[7])
+    else if (chkFails[7])
         fprintf(stderr, "ERROR: direct address used more than once.\n");
-    else if (b[8])
+    else if (chkFails[8])
         fprintf(stderr, "ERROR: indirect address used more than once.\n");
-    else if (b[9])
+    else if (chkFails[9])
         fprintf(stderr, "ERROR: inode marked use but not found in a directory.\n");
-    else if (b[10])
+    else if (chkFails[10])
         fprintf(stderr, "ERROR: inode referred to in directory but marked free.\n");
-    else if (b[11])
+    else if (chkFails[11])
         fprintf(stderr, "ERROR: bad reference count for file.\n");
-    else if (b[12])
+    else if (chkFails[12])
         fprintf(stderr, "ERROR: directory appears more than once in file system.\n");
 
     exit(1); // exit with error
