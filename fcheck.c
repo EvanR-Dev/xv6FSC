@@ -431,8 +431,6 @@ main(int argc, char *argv[])
 
       } // end 11 i think
 
-
-    }
     else {
 
     }
