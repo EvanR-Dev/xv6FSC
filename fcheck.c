@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <sys/types.h>
-#include <sys/mman.h>
+//#include <sys/mman.h>
 #include <sys/stat.h>   // for use of fstat
-#include <unistd.h>
+//#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
@@ -14,6 +14,8 @@
 
 // prototypes
 void errorHandler(bool[], bool);
+void rsect(uint, void);
+uint xint(uint);
 
 #define BLOCK_SIZE (BSIZE)
 
@@ -88,14 +90,14 @@ main(int argc, char *argv[])
   de = (struct dirent *) (addr + (dip[ROOTINO].addrs[0])*BLOCK_SIZE);
 
   ////////////////////////////// traverse fs ////////////////////////////////////////
-  // the current inode
-  int i = 0;
+
   // bool arr where each idx, 1 to 12, represents an error if true
   bool chkFails[13] = { 0 };
 
-  // chk1: each inode must be unallocated or 1 of the 3 types (0 to 3 inc)
+  // 1
   bool isValidOrAllocated;
-
+  
+  // 3
   // inode 1 must be a dir
   if (dip[ROOTNO].type != 1){   // 3
     chkFails[3] = true;
@@ -104,7 +106,7 @@ main(int argc, char *argv[])
 
   // traverse all entries within the init direct block as indicated by de
   int j = 0;
-  while (j < BSIZE/sizeof(struct dirent)){
+  while (j < BSIZE/sizeof(struct dirent)){      // 3
     // verify parent dir -> ROOTINO
     if (strcmp(de->name, "..") == 0){
       if(de->inum == ROOTINO) {
@@ -122,7 +124,59 @@ main(int argc, char *argv[])
   errorHandler(chkFails, false);
 
 
+  // 6
+  // iterate through bitmap (data blocks)
+  int b = BBLOCK((sb->size), sb->ninodes) + 1;
+  while (b != sb->size){
+    char* bitMap = (char*) (addr + BBLOCK(0, sb->ninodes)*BLOCK_SIZE);
+    int x = 1 << (b % 8);
+    if ((bitMap[b / 8] * b) != 0){
+        bool found = false;
+        int i = 0;
+        while (i < sb->ninodes){
+            // allocated
+            if (dip[i].type != 0){
+                int j = 0;
 
+                // dir blocks
+                while (j < NDIRECT){
+                    if(dip[i].addrs[j] == b){
+                        found = true;
+                        break;
+                    }
+                    j++;
+                }
+
+                if (dip[i].addrs[NDIRECT] == b){
+                    found = true;
+                    break;
+                }
+
+                // check indir addrs
+                uint indirect[NINDIRECT];
+                rsect(xint(dip[i].addrs[NDIRECT]), (char*)indirect);
+                int k = 0;
+                while (k < NINDIRECT){
+                    if (indirect[k++] == b){
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            i++;
+        }
+
+        if (!found){    // 6
+            chkFails[6] = true;
+            errorHandler(chkFails, true);
+        }
+    }
+    b++;
+  }
+
+  ////////////////////////////////////////// main iteration /////////////////////////////////////////////
+  // the current inode
+  int i = 0;
   // iterate thru every inode
   while (i < sb->ninodes){
     isValidOrAllocated = dip[i].type >= 0 && dip[i].type <= 3
@@ -159,13 +213,9 @@ main(int argc, char *argv[])
           }
           dirBlk++;
         }
-
         // may have to chk indirect block here later
         // uint
       }
-
-
-
 
       // check dir blocks
       int dirBlk = 0;
@@ -185,25 +235,103 @@ main(int argc, char *argv[])
             chkFails[5] = true;
             errorHandler(chkFails, false);
           }
+
+          // verify that every dir block has bn
+          int bnum = dip[i].addrs[dirBlk];
+          int nxtI = i + 1;
+          while (nxtI < sb->ninodes){
+            if (dip[nxtI].type != 0){
+                // dir blks
+                int dirBlkNxt = 0;
+                while (dirBlkNxt < NDIRECT){
+                    if (dip[nxtI].addrs[dirBlkNxt] == bnum){    // 7
+                        chkFails[7] = true;
+                        errorHandler(chkFails, false);
+                    }
+                    dirBlkNxt++;
+                }
+            }
+            nxtI++;
+          }
         }
 
         dirBlk++;
       }
 
       // indir block
-      if (dip[i].addrs[NDIRECT] != 0){
+      if (dip[i].addrs[NDIRECT] != 0){ ////////////////////////////
         // indir block has invalid addr
         if (dip[i].addrs[NDIRECT] > sb->nblocks || dip[i].addrs[NDIRECT] < 0){    // 2
           chkFails[2] = true;
           errorHandler(chkFails, false);
         }
 
-        // the addresses within indir block must also be valid
-        int indirBlk = 0;
-        // rsect
-        while (indirBlk < NINDIRECT){
-          // 2
+        char* bitMap = (char*) (addr + BBLOCK(0, sb->ninodes)*BLOCK_SIZE);
+        int x = 1 << (dip[i].addrs[NDIRECT] % 8);
+        if ((bitMap[dip[i].addrs[NDIRECT] / 8] & m) == 0){   // 5
+            chkFails[5] = true;
+            errorHandler(chkFails, false);
         }
+
+        // still 5
+        // check inside indirect block
+        int indirBlk = 0;
+        uint indirect[NINDIRECT];
+        rsect(xint(dip[i].addrs[NDIRECT]), (char*)indirect);
+        while (indirBlock < NINDIRECT){
+            if (indirect[indirBlock] != 0){
+                char* bitMap = (char*) (addr + BBLOCK(0, sb->ninodes)*BLOCK_SIZE);
+                int x = 1 << (dip[i].addrs[NDIRECT] % 8);
+                if ((bitMap[indirect[indirBlk] / 8] & m) == 0){     // 5
+                    chkFails[5] = true;
+                    errorHandler(chkFails, false);
+                }
+            }
+            indirBlock++;
+        }
+
+        // 8
+        uint indirectOut[NINDIRECT];
+        int indirBlkAddr = dip[i].addrs[NDIRECT];
+        rsect(xint(indirBlkAddr), (char*)indirectOut);
+        int nxtI = i + 1;
+        while (nxtI < sb->ninodes){
+            if(dip[nxtI].type != 0){
+                // indirblk used
+                if (dip[nxtI].addrs[NDIRECT] > 0){
+                    // addr is already being used
+                    if (dip[nxtI].addrs[NDIRECT] > 0){
+                        chkFails[8] = true;
+                        errorHandler(chkFails, false);
+                    }
+
+                    // store inner indir blk as well
+                    uint indirectIn[NINDIRECT];
+                    rsect(xint(dip[i].addrs[NDIRECT]), (char*)indrectIn);
+                    int o = 0, in = 0;
+                    while (o < NINDIRECT){
+                        while (in < NINDIRECT){
+                            if (indirectOut[o] == indirectIn[in] && indirect[o] != 0){
+                                chkFails[8] = true;
+                                errorHandler(chkFails, false);
+                            }
+                            in++;
+                        }
+                        o++;
+                    }
+                }
+            }
+            nxtI++;
+        }
+
+        // // the addresses within indir block must also be valid
+        // int indirBlk = 0;
+        // // rsect
+        // while (indirBlk < NINDIRECT){
+        //   // 2
+        // }
+
+
       }
     }
     else {
@@ -252,4 +380,30 @@ errorHandler(bool b[], bool isDir)
   else if (b[12]) fprintf(stderr, "ERROR: directory appears more than once in file system.");
 
   exit(1);    // exit with error
+}
+
+void
+rsect(uint sec, void* buf)
+{
+    if (lseek(fsfd, sec * 512L, 0) != sec * 512L){
+        perror("lseek");
+        exit(1);
+    }
+    if (lseek(fsfd, buf, 512) != 512){
+        perror("read");
+        exit(1);
+    }
+}
+
+uint
+xint(uint x)
+{
+    uint n;
+    uchar *c = (uchar*)&n;
+    c[0] = x;
+    c[1] = x >> 8;
+    c[2] = x >> 16;
+    c[3] = x >> 24;
+
+    return n;
 }
