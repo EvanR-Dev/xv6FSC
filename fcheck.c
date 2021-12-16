@@ -488,7 +488,52 @@ main(int argc, char *argv[])
 
       } // end 11 i think
 
-    else {
+      // misc 9, dont know where to put
+      bool flag = false;
+      if(dip[i].type != 0){
+        int indexer = 0;
+
+        while(indexer < sb->inodes){
+          if(dip[indexer].type == 1){
+            int indexerIn = 0;
+
+            while(indexerIn < NDIRECT){
+              struct dirent * dirE = (struct dirent *) (addr + (dip[indexer].addrs[indexerIn]) * BLOCK_SIZE);
+              int j = 0;
+              int sz = BLOCK_SIZE / sizeof(struct dirent);
+
+              while(j < sz){
+                if(strcmp(dirE->name, ".") != 0 && dirE->inum == i){
+                  flag = true;
+                }
+
+
+
+                j++;
+                dirE++;
+              }
+              indexerIn++;
+            }
+
+            if(!flag){
+              uitn indirectIn[NINDIRECT];
+              rsect(xint(dip[indexer].addrs[NDIRECT]), (char *) indirectIn);
+
+              int indexerInd = 0;
+              while(indexerInd < NINDIRECT){
+                
+
+
+                indexerInd++;
+              }
+            }
+          }
+
+          indexer++;
+        }
+      }
+
+    }else {
 
     }
 
