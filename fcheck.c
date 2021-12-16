@@ -488,7 +488,7 @@ main(int argc, char *argv[])
 
       } // end 11 i think
 
-      // misc 9, dont know where to put
+      // misc 9, dont know where to put. starting condiion is checking dip[i] type != 0
       bool flag = false;
       if(dip[i].type != 0){
         int indexer = 0;
@@ -507,8 +507,6 @@ main(int argc, char *argv[])
                   flag = true;
                 }
 
-
-
                 j++;
                 dirE++;
               }
@@ -521,9 +519,22 @@ main(int argc, char *argv[])
 
               int indexerInd = 0;
               while(indexerInd < NINDIRECT){
-                
+                if(indirectIn[indexerInd] <= 0){
+                  indexerInd++;
+                  continue;
+                }else{
+                  struct dirent * dirE = (struct dirent *) (addr + (indirect[indexerInd]) * BLOCK_SIZE);
+                  int sz = BLOCK_SIZE / sizeof(struct dirent);
+                  int k = 0;
 
+                  while(k < sz){
+                    if(strcmp(dirE->name, ".") != 0 && dirE->inum == i)
+                    flag = true;
 
+                    k++;
+                    dirE++;
+                  }
+                }
                 indexerInd++;
               }
             }
@@ -531,7 +542,12 @@ main(int argc, char *argv[])
 
           indexer++;
         }
-      }
+
+        if(!flag){
+          chkFails[9] = true;
+          errorHandler(chkFails, false);
+        }
+      } /// end of check 9 rewrite i presume
 
     }else {
 
