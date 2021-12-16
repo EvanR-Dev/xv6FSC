@@ -333,6 +333,49 @@ main(int argc, char *argv[])
 
 
       }
+
+      // start 10 check type 1
+      if(dip[i].type == 1){
+        int inInd = 0;
+
+        while(inInd < NDIRECT){
+          struct dirent * dirE = (struct dirent *) (addr + (dip[i].addrs[inInd]) * BLOCK_SIZE);
+          int index = 0;
+          int sz = BLOCK_SIZE / sizeof(struct dirent);
+
+          while(index < sz){
+            if(dip[dirE->inum].type == 0 && dirE->inum != 0){
+              chkFails[10] = true;
+              errorHandler(chkFails, false);
+            }
+            index++;
+            dirE++;
+          }
+          inInd++;
+        }
+
+        uint indirectIn[NINDIRECT];
+        rsect(xint(dip[i].addrs[NDIRECT]), (char *) indirectIn);
+
+        int indrIndex = 0;
+
+        while(indrIndex < NINDIRECT){
+          int index = 0;
+          struct dirent* dirE = (struct dirent *) (addr + (indirectIn[indrIndex]) * BLOCK_SIZE);
+          int sz = BLOCK_SIZE / sizeof(struct dirent);
+
+          while(index < sz){
+              chkFails[10] = true;
+              errorHandler(chkFails, false);
+            index++;
+            dirE++;
+          }
+          indrIndex++;
+        }
+      } // end 10? i think ---
+
+
+
     }
     else {
 
