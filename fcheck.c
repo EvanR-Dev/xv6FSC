@@ -375,6 +375,62 @@ main(int argc, char *argv[])
       } // end 10? i think ---
 
 
+      // check 11, if type 2
+      if(dip[i].type == 2){
+        int referenceCounter = 0;
+        int index = 0;
+
+        while(index < sb->inodes){
+          if(dip[index].type == 1){
+            int inIndex = 0;
+
+            while(inIndex < NDIRECT){
+              struct dirent * dirE = (struct dirent *) ( addr + (dip[index].addrs[inIndex]) * BLOCK_SIZE);
+              int dinIndex = 0;
+              int sz = BLOCK_SIZE / sizeof(struct dirent);
+
+
+              while(dinIndex < sz){
+                if(dirE->inum == i)
+                  referenceCounter++;
+
+                dinIndex++;
+                dirE++;
+              }
+              inIndex++;
+            }
+          }
+
+          uint indirectIn[NINDIRECT];
+          rsect(xint(dip[index].addrs[NDIRECT]), (char *) indirectIn);
+
+          int indrIndex = 0;
+          while(indrIndex < NINDIRECT){
+            if(indirectIn[indrIndex] > 0){
+              struct dirent * dirE = (struct dirent *) (addr + (indirectIn[indrIndex]) * BLOCK_SIZE);
+              int sz = BLOCK_SIZE / sizeof(struct dirent);
+              int index2 = 0;
+
+              while(index2 < sz){
+                if(dirE->inum == i)
+                  referenceCounter++;
+
+                index2++;
+                dirE++;
+              }
+            }
+            indrIndex++;
+          }
+          index++;
+        }
+
+        if(referenceCounter != dip[i].nlink){
+          chkFails[11] = true;
+          errorHandler(chkFails, false);
+        }
+
+      } // end 11 i think
+
 
     }
     else {
