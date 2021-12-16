@@ -1,3 +1,25 @@
+///////////////////////////////////////////////////////////////////
+// Important info:
+// Block 0 = unused
+// Block 1 = super block
+// block 2 to ... = inodes
+// after = bitmap
+
+// searches start from root dir: ROOTINO 1
+// block size = 512
+// superblock has: size, number of data blocks (nblocks),
+// and number of inodes (ninodes)
+// read superblock first to traverse for fschk
+
+// inode struct:
+// type = file or dir or device, in stat.h: T_DIR = 1, T_FILE = 2,T_DEV = 3
+// IPB = inodes per block
+
+// directory entry struct:
+// inum
+// names
+///////////////////////////////////////////////////////////////////
+
 #include <stdio.h>
 #include <sys/types.h>
 //#include <sys/mman.h>
@@ -13,9 +35,15 @@
 //#include "fs.h"
 
 // prototypes
+// helpers
 void errorHandler(bool[], bool);
 void rsect(uint, void);
 uint xint(uint);
+
+// checks
+void fsChk1();
+// add more with param
+// ...
 
 #define BLOCK_SIZE (BSIZE)
 
@@ -44,27 +72,6 @@ int main(int argc, char *argv[])
     }
 
     ///////////////////////// ...Begin real changes... /////////////////////////////
-
-    // Important info:
-
-    // Block 0 = unused
-    // Block 1 = super block
-    // block 2 to ... = inodes
-    // after = bitmap
-
-    // searches start from root dir: ROOTINO 1
-    // block size = 512
-    // superblock has: size, number of data blocks (nblocks), and number of inodes (ninodes)
-    // read superblock first to traverse for fschk
-
-    // inode struct:
-    // type = file or dir or device, in stat.h: T_DIR = 1, T_FILE = 2,T_DEV = 3
-
-    // IPB = inodes per block
-
-    // directory entry struct:
-    // inum
-    // names
 
     /* Dont hard code the size of file. Use fstat to get the size */
     // map file as part of memory (memory mapped I/O)
@@ -611,22 +618,9 @@ int main(int argc, char *argv[])
             //   // 2
             // }
         }
+        i++;
     }
-    i++;
-}
-
-// // read root inode
-// // sz of inode, links to inode, and type of inode
-// printf("Root inode  size %d links %d type %d \n", dip[ROOTINO].size, dip[ROOTINO].nlink, dip[ROOTINO].type);
-
-// // print the entries in the first block of root dir
-// n = dip[ROOTINO].size/sizeof(struct dirent);
-// for (i = 0; i < n; i++,de++){
-//   printf(" inum %d, name %s ", de->inum, de->name);
-// 	printf("inode  size %d links %d type %d \n", dip[de->inum].size, dip[de->inum].nlink, dip[de->inum].type);
-// }
-
-exit(0);
+    exit(0);
 }
 
 // all errors: go to when error occurred during traversal
