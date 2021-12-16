@@ -334,10 +334,10 @@ main(int argc, char *argv[])
 
       }
 
-      // start 10 check type 1
+      // start 10 check type 1, checks 12 after 10 process is done
       if(dip[i].type == 1){
-        int inInd = 0;
 
+        int inInd = 0;
         while(inInd < NDIRECT){
           struct dirent * dirE = (struct dirent *) (addr + (dip[i].addrs[inInd]) * BLOCK_SIZE);
           int index = 0;
@@ -371,6 +371,63 @@ main(int argc, char *argv[])
             dirE++;
           }
           indrIndex++;
+        }
+
+        // check 12 in same "if"
+
+        int directCounter = 0;
+        int ind12 = 0;
+        while(ind12 < sb->ninodes){
+          if(dip[ind12].type == 1){
+            int indexer12 = 0;
+
+            while(indexer12 < NDIRECT){
+              struct dirent * dirE = (struct dirent *) (addr + (dip[ind12].addrs[indexer12]) * BLOCK_SIZE);
+              int in12 = 0;
+              int sz = BLOCK_SIZE / sizeof(struct dirent);
+
+              while(in12 < sz){
+                if(strcmp(dirE->name, "..") != 0 && strcmp(dirE->name, ".") != 0 && dirE->inum == i)
+                  directCounter++;
+
+                in12++;
+                dirE++;
+              }
+              indexer12++;
+            }
+
+            uint indirectIn[NINDIRECT];
+            rsect(xint(dip[ind12].addrs[NDIRECT]), (char *) indirectIn);
+
+            int indexIndirect = 0;
+
+            while(indexIndirect < NINDIRECT){
+              if(indirectIn[indexIndirect] <= 0){
+                indexIndirect++;
+                continue;
+              }else{
+                struct dirent * dirE = (struct dirent *) (addr + (indirectIn[indexIndirect]) * BLOCK_SIZE);
+                int temp = 0;
+                int sz = BLOCK_SIZE / sizeof(struct dirent); 
+
+                while(temp < sz){
+                  if(strcmp(dirE->name, "..") != 0 && strcmp(dirE->name, ".") != 0 && dirE->inum == i)
+                    directCounter++;
+
+                  temp++;
+                  dirE++;
+                }
+              }
+              indexIndirect++;
+            }
+          }
+
+          ind12++;
+        }
+
+        if(ROOTINO != i && directCounter != 1){
+          chkFails[12] = true;
+          errorHandler(chkFails, false);
         }
       } // end 10? i think ---
 
